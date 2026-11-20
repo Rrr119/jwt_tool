@@ -14,6 +14,7 @@ Its functionality includes:
   * (CVE-2019-20933/CVE-2020-28637) ***Blank password*** vulnerability
   * (CVE-2020-28042) ***Null signature*** vulnerability
   * (CVE-2022-21449) ***Psychic Signature*** ECDSA vulnerability
+  * ***ECDSA zero-value signature*** (r=0, s=0) signature-bypass vulnerability
 * Scanning for misconfigurations or known weaknesses
 * Fuzzing claim values to provoke unexpected behaviours
 * Testing the validity of a secret/key file/Public Key/JWKS key
@@ -91,6 +92,11 @@ For example, to tamper the existing token run the following:
 Many options need additional values to set options.  
 For example, to run a particular type of exploit you need to choose the eXploit (-X) option and select the vulnerability (here using "a" for the *alg:none* exploit):  
 `$ python3 jwt_tool.py eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJsb2dpbiI6InRpY2FycGkifQ.aqNCvShlNT9jBFTPBpHDbt2gBB1MyHiisSDdp8SQvgw -X a`
+
+The ECDSA zero-value signature attack (`-X z`) forges an ES256/ES384/ES512 token whose signature integers are both zero (`r=0, s=0`), in both DER and raw (IEEE P1363) encodings. It targets verifiers that skip the ECDSA range checks (`1 <= r, s <= n-1`) before running the public-key math, so an attacker-controlled signature with zero integers can be accepted without knowing the private key:
+`$ python3 jwt_tool.py eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJ1c2VyIjoiZ3Vlc3QifQ.MEUCIQD9OuzwgNT3eGIZWy1oFXGhIKZDLyRqWDLos2i0GOXGtwIgRt4OUYUzoztjeIbzO-URqx7f9COLgq7SxSRgNPcKu9Q -X z`
+
+This check is also included automatically in Playbook scans (`-M pb`) against ES* tokens. A local target range and end-to-end tests live in `tests/` (see `tests/README.md`).
 
 ### Extra parameters
 Some options such as Verifying tokens require additional parameters/files to be provided (here providing the Public Key in PEM format):  

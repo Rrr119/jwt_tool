@@ -1,0 +1,17 @@
+{
+  "root": "/home/dev/feedback/uid29562",
+  "B": "/home/dev/feedback/uid29562",
+  "sha": "40abd3a7024844ec7990d0eaf4ad28c0553b0e01",
+  "wslDistro": "Ubuntu-26.04",
+  "source": {
+    "owner": "ticarpi",
+    "repo": "jwt_tool",
+    "sha": "40abd3a7024844ec7990d0eaf4ad28c0553b0e01"
+  },
+  "fork": {
+    "owner": "Rrr119",
+    "repo": "jwt_tool",
+    "cloneUrl": "https://github.com/Rrr119/jwt_tool.git"
+  },
+  "at": "2026-11-20T16:00:54.557Z"
+}
